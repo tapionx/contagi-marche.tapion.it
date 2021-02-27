@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html>
+<head>
+   <meta charset="utf-8">
+   <meta name="viewport" content="width=device-width, initial-scale=1">
+
+   <!-- Primary Meta Tags -->
+   <title>contagi nelle Marche</title>
+   <meta name="title" content="contagi nelle Marche">
+   <meta name="description" content="Grafici dell'andamento dei contagi da Covid-19 nelle Marche, divisi per Comune">
+
+   <!-- Open Graph / Facebook -->
+   <meta property="og:type" content="website">
+   <meta property="og:url" content="https://contagi-marche.tapion.it/">
+   <meta property="og:title" content="contagi nelle Marche">
+   <meta property="og:description" content="Grafici dell'andamento dei contagi da Covid-19 nelle Marche, divisi per Comune">
+
+   <!-- Twitter -->
+   <meta property="twitter:card" content="summary_large_image">
+   <meta property="twitter:url" content="https://contagi-marche.tapion.it/">
+   <meta property="twitter:title" content="contagi nelle Marche">
+   <meta property="twitter:description" content="Grafici dell'andamento dei contagi da Covid-19 nelle Marche, divisi per Comune">
+
+   <link rel="stylesheet" href="https://unpkg.com/vue-select@3.0.0/dist/vue-select.css">
+   <link rel="preconnect" href="https://fonts.gstatic.com">
+   <link href="https://fonts.googleapis.com/css2?family=Montserrat&display=swap" rel="stylesheet">
+   <style>
+      body {
+         font-family: 'Montserrat', sans-serif;
+      }
+      .selection {
+         max-width: 660px;
+         margin: 0 auto;
+      }
+      #chart {
+         max-width: 1024px;
+         margin: 0 auto;
+      }
+      .cases {
+         color: #db5c5c;
+      }
+      .quarantines {
+         color: #5959d6;
+      }
+      .increment {
+         color: red;
+      }
+      .decrease {
+         color: green;
+      }
+      [v-cloak] {
+         display: none;
+      }
+      .footer {
+         text-align: center;
+         margin-top: 6px;
+         margin-bottom: 0px;
+      }
+      #chart {
+         /* height: 400px; */
+      }
+   </style>
+</head>
+<body>
+   <div id="app" v-cloak>
+      <div class="selection">
+         <h1>Seleziona il comune delle Marche</h1>
+         <v-select :options="Object.keys(dataset).sort()" v-model="selected_city" @input="cityChanged"></v-select>
+      </div>
+      <div v-show="selected_city">
+         <div class="selection">
+            <h3>A {{ selected_city }} attualmente ci sono <span class="cases">{{ current_cases }} positivi</span> e <span class="quarantines">{{ current_quarantines }} quarantene</span>.</h3>
+            <h3>
+               Rispetto a 7 giorni fa: 
+               <span v-if="last_week_cases_increment > 0" class="increment">
+                  +{{ last_week_cases_increment }} ({{ last_week_cases_percentage.toFixed(1) }}%)
+               </span>
+               <span v-else class="decrease">
+                  {{ last_week_cases_increment }} ({{ last_week_cases_percentage.toFixed(1) }}%)
+               </span>
+               casi 
+               <span v-if="last_week_quarantines_increment > 0" class="increment">
+                  +{{ last_week_quarantines_increment }} ({{ last_week_quarantines_percentage.toFixed(1) }}%)
+               </span>
+               <span v-else class="decrease">
+                  {{ last_week_quarantines_increment }} ({{ last_week_quarantines_percentage.toFixed(1) }}%)
+               </span>
+               quarantene.
+            </h3>
+         </div>
+         <div class="chart-container" style="position: relative; height:50vh; min-height: 400px;">
+            <canvas id="chart"></canvas>
+         </div>
+      </div>
+      <p class="footer">I dati sono aggiornati al {{ last_sample_date }} e recuperati dal <a href="https://www.regione.marche.it/Regione-Utile/Salute/Coronavirus/Report-contagiati-per-Comune" target="_blank">sito della Regione Marche.</a></p>
+   </div>
+   <script src="https://cdn.jsdelivr.net/npm/chart.js@2.9.4"></script>
+   <script src="https://cdn.jsdelivr.net/npm/vue@2.6.12"></script>
+   <script src="https://unpkg.com/vue-select@3.0.0"></script>
+   <script>
+      
+      Vue.component('v-select', VueSelect.VueSelect);
+
+      var backgroundColor = 'white';
+      Chart.plugins.register({
+         beforeDraw: function(c) {
+            var ctx = c.chart.ctx;
+            ctx.fillStyle = backgroundColor;
+            ctx.fillRect(0, 0, c.chart.width, c.chart.height);
+         }
+      });
+      Chart.defaults.global.defaultFontColor = 'black';
+      Chart.defaults.global.defaultFontFamily = "'Montserrat', sans-serif";
+
+      new Vue({
+         el: '#app',
+         data: {
+            dataset: false,
+            selected_city: null,
+            chart: false,
+            current_cases: null,
+            current_quarantines: null,
+            last_week_cases_increment: null,
+            last_week_cases_percentage: 0,
+            last_week_quarantines_increment: null,
+            last_week_quarantines_percentage: 0,
+            last_sample_date: null,
+         },
+         mounted: function(){
+            fetch('contagi_marche.json')
+            .then(r => r.json())
+            .then(json => {
+               this.dataset = json;
+               window.dataset = json;
+               if(!window.location.hash)
+                  this.selected_city = "Fabriano";
+               else
+                  this.selected_city = window.location.hash.replace('#','');
+               this.cityChanged();
+            });
+         },
+         methods: {
+            cityChanged: function() {
+               window.location.hash = this.selected_city;
+               this.loadChart(this.dataset[this.selected_city], this.selected_city);
+               const last_sample = this.dataset[this.selected_city][this.dataset[this.selected_city].length - 1];
+               this.last_sample_date = last_sample[0];
+               this.current_cases = last_sample[1];
+               this.current_quarantines = last_sample[2];
+               const last_week_sample = this.dataset[this.selected_city][this.dataset[this.selected_city].length - 1 - 7];
+               this.last_week_cases_increment = this.current_cases - last_week_sample[1];
+               this.last_week_cases_percentage = (this.last_week_cases_increment / last_week_sample[1]) * 100;
+               this.last_week_quarantines_increment = this.current_quarantines - last_week_sample[2];
+               this.last_week_quarantines_percentage = (this.last_week_quarantines_increment / last_week_sample[2]) * 100;
+               console.log(last_week_sample);
+            },
+            loadChart: function(data, city_name) {
+               if(this.chart != false)
+                  this.chart.destroy();
+               const labels = data.map((x) => x[0]);
+               const cases = data.map((x) => x[1]);
+               const quarantines = data.map((x) => x[2]);
+               this.chart = new Chart('chart', {
+                  type: 'line',
+                  data: {
+                     labels: labels,
+                     datasets: [
+                        {
+                           label: "positivi", 
+                           data: cases,
+                           backgroundColor: 'rgba(219, 73, 38, 0.3)',
+                           pointHitRadius: 50,
+                        },
+                        {
+                           label: "quarantene", 
+                           data: quarantines,
+                           backgroundColor: 'rgba(60, 131, 235, 0.3)',
+                           pointHitRadius: 50,
+                        },
+                     ]
+                  },
+                  options: {
+                     title: {
+                        display: true,
+                        text: `Andamento dei contagi a ${city_name}`,
+                        fontSize: 25,
+                     },
+                     legend: {
+                        labels: {
+                           fontSize: 20,
+                        }
+                     },
+                     responsive: true,
+                     maintainAspectRatio: false,
+                     aspectRatio: 2,
+                  }
+               });
+            },
+         }
+      });
+   </script>
+   <script async src="https://www.googletagmanager.com/gtag/js?id=G-71N214Z716"></script>
+   <script>
+      window.dataLayer = window.dataLayer || [];
+      function gtag(){dataLayer.push(arguments);}
+      gtag('js', new Date());
+
+      gtag('config', 'G-71N214Z716');
+   </script>
+</body>
+</html>
