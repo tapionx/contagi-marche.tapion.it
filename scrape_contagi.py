@@ -17,8 +17,8 @@ while now > date:
     data = r.json()
     for city in data.get('data', []):
         city_name = city[0]
-        cases_count = city[3]
-        quarantine_count = city[4]
+        quarantine_count = city[3]
+        cases_count = city[4]
         if not city_name in dataset:
             dataset[city_name] = []
         dataset[city_name].append((date_str, cases_count, quarantine_count))
